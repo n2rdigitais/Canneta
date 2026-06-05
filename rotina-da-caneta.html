@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<title>Rotina da Caneta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+body{background:#F5F0E6;font-family:'Nunito Sans',system-ui,sans-serif;color:#2C362E}
+::placeholder{color:#B3AC9C}
+button:active{transform:scale(.97)}
+.space-y-4>*+*{margin-top:16px}
+.space-y-2>*+*{margin-top:8px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useMemo}=React;
+const C={bg:"#F5F0E6",surface:"#FFFDF8",ink:"#2C362E",muted:"#8C8676",line:"#E7DFD0",primary:"#4F6B57",primarySoft:"#E4EBE2",accent:"#C9883F",accentSoft:"#F4E7D3"};
+const DISPLAY="'Fraunces',Georgia,serif";
+const BODY="'Nunito Sans',system-ui,sans-serif";
+const DAYS_PT=["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+const SITES=["Barriga (esq.)","Barriga (dir.)","Coxa (esq.)","Coxa (dir.)","Braço (esq.)","Braço (dir.)"];
+const STORE_KEY="rotina_caneta_v1";
+
+const todayISO=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
+const fmtBR=iso=>{if(!iso)return"";const[y,m,d]=iso.split("-");return`${d}/${m}/${y}`};
+const addDays=(iso,n)=>{const[y,m,d]=iso.split("-").map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+n);return`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`};
+const daysBetween=(a,b)=>{const[ay,am,ad]=a.split("-").map(Number);const[by,bm,bd]=b.split("-").map(Number);return Math.round((new Date(by,bm-1,bd)-new Date(ay,am-1,ad))/86400000)};
+
+const DEFAULT={config:{weekday:0,doseText:"",hydrationGoal:8,onboarded:false},applications:[],days:{},weights:[]};
+
+const save=d=>{try{localStorage.setItem(STORE_KEY,JSON.stringify(d))}catch(e){}};
+const load=()=>{try{const s=localStorage.getItem(STORE_KEY);if(s)return{...DEFAULT,...JSON.parse(s)}}catch(e){}return DEFAULT};
+
+const card={background:C.surface,borderRadius:24,border:`1px solid ${C.line}`,boxShadow:"0 2px 18px -12px rgba(46,58,48,.35)"};
+const Card=({children,style={}})=><div style={{...card,...style}}>{children}</div>;
+const btnP={display:"inline-flex",alignItems:"center",justifyContent:"center",gap:".4rem",background:C.primary,color:"#fff",fontWeight:700,padding:".8rem 1.2rem",borderRadius:16,border:"none",cursor:"pointer",fontFamily:BODY,fontSize:15};
+const btnS={display:"inline-flex",alignItems:"center",gap:".35rem",background:C.primarySoft,color:C.primary,fontWeight:700,padding:".5rem .9rem",borderRadius:14,border:"none",cursor:"pointer",fontFamily:BODY,fontSize:14};
+const inp={width:"100%",padding:".8rem 1rem",borderRadius:16,border:`1px solid ${C.line}`,background:C.bg,outline:"none",fontFamily:BODY,color:C.ink,fontSize:15};
+
+/* ── icons (inline SVG) ── */
+const Ic=({d,size=18,color="currentColor",fill="none",strokeWidth=2})=>(
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    {Array.isArray(d)?d.map((p,i)=><path key={i} d={p}/>):<path d={d}/>}
+  </svg>
+);
+const ICONS={
+  syringe:"M18 2L22 6L17 11L20 14L19 15L16 12L13 15L10 12L7 15L4 12L9 7L6 4L7 3L10 6L13 3L18 2Z M10 12L14 8",
+  drops:["M12 2C6 8 4 11 4 14a8 8 0 0016 0c0-3-2-6-8-12z"],
+  activity:"M22 12H18L15 19L9 5L6 12H2",
+  notebook:"M4 2h13l3 3v14a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1zM4 2v18M12 6v12M8 6h8M8 10h8M8 14h8",
+  clipboard:["M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2","M9 2h6a1 1 0 011 1v2a1 1 0 01-1 1H9a1 1 0 01-1-1V3a1 1 0 011-1z","M9 12h6M9 16h4"],
+  check:"M20 6L9 17L4 12",
+  plus:"M12 5v14M5 12h14",
+  heart:"M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z",
+  sparkles:["M12 3L13.09 8.26L18 7L14.74 11.09L19 12L14.74 12.91L18 17L13.09 15.74L12 21L10.91 15.74L6 17L9.26 12.91L5 12L9.26 11.09L6 7L10.91 8.26Z"],
+  chevron:"M9 18L15 12L9 6",
+  pin:"M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z M12 7a3 3 0 100 6 3 3 0 000-6z",
+  cal:"M3 9h18M3 5h18M5 3h2M17 3h2M3 5v16h18V5M9 13h6M9 17h4",
+  copy:["M20 9H11a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-9a2 2 0 00-2-2z","M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"],
+  checkCircle:"M22 11.08V12a10 10 0 11-5.93-9.14 M22 4L12 14.01L9 11.01",
+  circle:"M12 22a10 10 0 100-20 10 10 0 000 20z",
+};
+const Icon=({name,size=18,color=C.ink,fill="none"})=><Ic d={ICONS[name]} size={size} color={color} fill={fill}/>;
+
+/* ── App ── */
+function App(){
+  const[data,setData]=useState(DEFAULT);
+  const[tab,setTab]=useState("hoje");
+  useEffect(()=>setData(load()),[]);
+  const today=todayISO();
+  const persist=d=>{setData(d);save(d)};
+
+  const lastApp=data.applications.length?[...data.applications].sort((a,b)=>a.date<b.date?1:-1)[0]:null;
+  const nextAppDate=useMemo(()=>{
+    if(lastApp)return addDays(lastApp.date,7);
+    const dow=new Date().getDay();
+    return addDays(today,(data.config.weekday-dow+7)%7);
+  },[lastApp,data.config.weekday,today]);
+
+  const daysToNext=daysBetween(today,nextAppDate);
+  const appliedToday=data.applications.some(a=>a.date===today);
+  const todayEntry=data.days[today]||{water:0,moved:false,note:""};
+  const updateToday=patch=>persist({...data,days:{...data.days,[today]:{...todayEntry,...patch}}});
+
+  if(!data.config.onboarded)return<Onboarding data={data} persist={persist}/>;
+
+  const TABS=[
+    {id:"hoje",label:"Hoje",icon:"heart"},
+    {id:"aplicacao",label:"Aplicação",icon:"syringe"},
+    {id:"diario",label:"Diário",icon:"notebook"},
+    {id:"consulta",label:"Consulta",icon:"clipboard"},
+  ];
+  const titles={hoje:"Olá 👋",aplicacao:"Aplicação",diario:"Seu diário",consulta:"Resumo"};
+
+  return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",background:C.bg,fontFamily:BODY,color:C.ink}}>
+      <div style={{margin:"0 auto",width:"100%",maxWidth:448,flex:1,display:"flex",flexDirection:"column"}}>
+        <header style={{padding:"28px 20px 12px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,color:C.muted,fontSize:11,letterSpacing:".06em",textTransform:"uppercase"}}>
+            <Icon name="sparkles" size={14} color={C.muted}/> Rotina da Caneta
+          </div>
+          <h1 style={{fontFamily:DISPLAY,fontSize:30,lineHeight:1.15,marginTop:4}}>{titles[tab]}</h1>
+          <p style={{fontSize:13,color:C.muted,textTransform:"capitalize"}}>{DAYS_PT[new Date().getDay()]}, {fmtBR(today)}</p>
+        </header>
+
+        <main style={{padding:"0 20px 112px",flex:1}}>
+          <div className="space-y-4">
+            {tab==="hoje"&&<Hoje {...{daysToNext,nextAppDate,appliedToday,todayEntry,updateToday,config:data.config}} onApply={()=>setTab("aplicacao")}/>}
+            {tab==="aplicacao"&&<Aplicacao {...{data,persist,today,appliedToday,nextAppDate,daysToNext,lastApp}}/>}
+            {tab==="diario"&&<Diario {...{data,persist,today}}/>}
+            {tab==="consulta"&&<Consulta {...{data,today}}/>}
+            <p style={{fontSize:11,lineHeight:1.6,color:C.muted,textAlign:"center",padding:"8px 16px 0"}}>
+              Este app organiza sua rotina. Não substitui orientação médica.
+            </p>
+          </div>
+        </main>
+
+        <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:448,background:"rgba(255,253,248,.96)",backdropFilter:"blur(8px)",borderTop:`1px solid ${C.line}`}}>
+          <div style={{display:"flex",justifyContent:"space-around",padding:8}}>
+            {TABS.map(({id,label,icon})=>{
+              const active=tab===id;
+              return(
+                <button key={id} onClick={()=>setTab(id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:16,border:"none",cursor:"pointer",color:active?C.primary:C.muted,background:active?C.primarySoft:"transparent",fontFamily:BODY}}>
+                  <Icon name={icon} size={21} color={active?C.primary:C.muted} strokeWidth={active?2.4:1.9}/>
+                  <span style={{fontSize:10.5,fontWeight:700}}>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+/* ── Onboarding ── */
+function Onboarding({data,persist}){
+  const[step,setStep]=useState(0);
+  const[weekday,setWeekday]=useState(0);
+  const[doseText,setDoseText]=useState("");
+  const finish=()=>persist({...data,config:{...data.config,weekday,doseText,onboarded:true}});
+  return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",background:C.bg,fontFamily:BODY,color:C.ink}}>
+      <div style={{margin:"0 auto",width:"100%",maxWidth:448,flex:1,display:"flex",flexDirection:"column",padding:"40px 24px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,color:C.muted,fontSize:11,letterSpacing:".06em",textTransform:"uppercase"}}>
+          <Icon name="sparkles" size={14} color={C.muted}/> Rotina da Caneta
+        </div>
+        {step===0&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+            <h1 style={{fontFamily:DISPLAY,fontSize:34,lineHeight:1.15}}>A caneta faz metade.<br/>A rotina é a outra.</h1>
+            <p style={{marginTop:16,color:C.muted,lineHeight:1.7}}>Aqui a gente organiza o que costuma se perder no dia a dia: o dia da aplicação, a hidratação, o movimento e o que levar pro médico. No seu ritmo, sem cobrança e sem balança no comando.</p>
+            <button onClick={()=>setStep(1)} style={{...btnP,marginTop:32}}>Começar <Icon name="chevron" size={18} color="#fff"/></button>
+          </div>
+        )}
+        {step===1&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+            <h2 style={{fontFamily:DISPLAY,fontSize:24}}>Que dia você costuma aplicar?</h2>
+            <p style={{marginTop:8,fontSize:14,color:C.muted}}>Pode mudar depois.</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:20}}>
+              {DAYS_PT.map((d,i)=>(
+                <button key={i} onClick={()=>setWeekday(i)} style={{padding:12,borderRadius:16,fontSize:14,fontWeight:700,cursor:"pointer",border:`1px solid ${weekday===i?C.primary:C.line}`,background:weekday===i?C.primarySoft:C.surface,color:weekday===i?C.primary:C.ink,fontFamily:BODY}}>{d}</button>
+              ))}
+            </div>
+            <button onClick={()=>setStep(2)} style={{...btnP,marginTop:32}}>Continuar <Icon name="chevron" size={18} color="#fff"/></button>
+          </div>
+        )}
+        {step===2&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+            <h2 style={{fontFamily:DISPLAY,fontSize:24}}>Qual a sua dose atual?</h2>
+            <p style={{marginTop:8,fontSize:14,color:C.muted}}>A que <strong>você e seu médico</strong> definiram.</p>
+            <input value={doseText} onChange={e=>setDoseText(e.target.value)} placeholder="ex: 2,5 mg" style={{...inp,marginTop:20}}/>
+            <button onClick={finish} style={{...btnP,marginTop:32}}>Entrar no app <Icon name="chevron" size={18} color="#fff"/></button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Hoje ── */
+function Hoje({daysToNext,nextAppDate,appliedToday,todayEntry,updateToday,config,onApply}){
+  const goal=config.hydrationGoal||8;
+  const lbl=appliedToday?"Feita hoje ✓":daysToNext<=0?"É hoje!":`Faltam ${daysToNext} ${daysToNext===1?"dia":"dias"}`;
+  return(
+    <>
+      <Card style={{padding:20}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:6,color:C.primary,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>
+              <Icon name="syringe" size={15} color={C.primary}/> Aplicação
+            </div>
+            <p style={{fontFamily:DISPLAY,fontSize:22,marginTop:8}}>{lbl}</p>
+            <p style={{display:"flex",alignItems:"center",gap:4,fontSize:13,color:C.muted,marginTop:2}}>
+              <Icon name="cal" size={13} color={C.muted}/> Próxima: {fmtBR(nextAppDate)}
+            </p>
+          </div>
+          {!appliedToday&&<button onClick={onApply} style={btnS}>Registrar</button>}
+        </div>
+      </Card>
+
+      <Card style={{padding:20}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><Icon name="drops" size={18} color={C.accent} fill={C.accent}/><span style={{fontWeight:600}}>Hidratação</span></div>
+          <span style={{fontSize:13,color:C.muted}}>{todayEntry.water}/{goal} copos</span>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:16}}>
+          {Array.from({length:goal}).map((_,i)=>{
+            const on=i<todayEntry.water;
+            return(
+              <button key={i} onClick={()=>updateToday({water:on?i:i+1})} style={{height:36,width:36,borderRadius:12,display:"grid",placeItems:"center",cursor:"pointer",background:on?C.accentSoft:C.bg,border:`1px solid ${on?C.accent:C.line}`,color:on?C.accent:C.muted}}>
+                <Icon name="drops" size={16} color={on?C.accent:C.muted} fill={on?C.accent:"none"}/>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card style={{padding:20}}>
+        <button onClick={()=>updateToday({moved:!todayEntry.moved})} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",background:"none",border:"none",cursor:"pointer"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><Icon name="activity" size={18} color={C.primary}/><span style={{fontWeight:600,fontFamily:BODY,fontSize:15}}>Me movimentei hoje</span></div>
+          {todayEntry.moved?<Icon name="checkCircle" size={24} color={C.primary}/>:<Icon name="circle" size={24} color={C.line}/>}
+        </button>
+        <p style={{marginTop:8,fontSize:12,color:C.muted}}>Qualquer movimento vale. Sem meta, sem culpa.</p>
+      </Card>
+
+      <Card style={{padding:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <Icon name="heart" size={17} color={C.primary}/><span style={{fontWeight:600}}>Como você se sentiu hoje?</span>
+        </div>
+        <textarea value={todayEntry.note} onChange={e=>updateToday({note:e.target.value})} rows={3}
+          placeholder="Enjoo, energia, sono, humor… anote o que quiser contar ao médico depois."
+          style={{...inp,resize:"none",fontSize:14}}/>
+      </Card>
+    </>
+  );
+}
+
+/* ── Aplicação ── */
+function Aplicacao({data,persist,today,appliedToday,nextAppDate,daysToNext,lastApp}){
+  const[dose,setDose]=useState(data.config.doseText||"");
+  const suggested=useMemo(()=>{
+    if(!lastApp)return SITES[0];
+    return SITES[(SITES.indexOf(lastApp.site)+1)%SITES.length];
+  },[lastApp]);
+  const[site,setSite]=useState(suggested);
+  const register=()=>{
+    if(appliedToday)return;
+    persist({...data,applications:[...data.applications,{date:today,dose,site}],config:{...data.config,doseText:dose}});
+  };
+  const history=[...data.applications].sort((a,b)=>a.date<b.date?1:-1).slice(0,8);
+  return(
+    <>
+      <Card style={{padding:20}}>
+        {appliedToday?(
+          <div style={{textAlign:"center",padding:"8px 0"}}>
+            <Icon name="checkCircle" size={34} color={C.primary}/>
+            <p style={{fontWeight:600,marginTop:8}}>Aplicação de hoje registrada</p>
+            <p style={{fontSize:14,color:C.muted}}>Próxima em {fmtBR(nextAppDate)}</p>
+          </div>
+        ):(
+          <>
+            <p style={{fontSize:14,color:C.muted,marginBottom:12}}>{daysToNext<=0?"Hoje é dia de aplicar.":` Próxima em ${fmtBR(nextAppDate)}.`}</p>
+            <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".05em"}}>Dose</label>
+            <input value={dose} onChange={e=>setDose(e.target.value)} placeholder="ex: 2,5 mg" style={{...inp,marginTop:4,marginBottom:16}}/>
+            <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".05em"}}>
+              <Icon name="pin" size={13} color={C.muted}/> Local (alterne a cada vez)
+            </label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,margin:"8px 0 12px"}}>
+              {SITES.map(s=>{
+                const on=site===s;
+                return<button key={s} onClick={()=>setSite(s)} style={{padding:"10px 12px",borderRadius:16,fontSize:14,cursor:"pointer",border:`1px solid ${on?C.primary:C.line}`,background:on?C.primarySoft:C.bg,color:on?C.primary:C.ink,fontWeight:on?700:500,fontFamily:BODY}}>{s}{s===suggested?" ·":""}</button>;
+              })}
+            </div>
+            <p style={{fontSize:11,color:C.muted,marginBottom:16}}>Sugerimos <strong>{suggested}</strong> (diferente da última vez).</p>
+            <button onClick={register} style={{...btnP,width:"100%"}}><Icon name="syringe" size={17} color="#fff"/> Registrar aplicação de hoje</button>
+          </>
+        )}
+      </Card>
+      <div>
+        <p style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".05em",padding:"0 4px",marginBottom:8}}>Histórico</p>
+        {history.length===0?<Card style={{padding:20,fontSize:14,color:C.muted,textAlign:"center"}}>Nenhuma aplicação registrada ainda.</Card>:(
+          <div className="space-y-2">
+            {history.map((a,i)=>(
+              <Card key={i} style={{padding:16,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{height:36,width:36,borderRadius:12,display:"grid",placeItems:"center",background:C.primarySoft,color:C.primary}}><Icon name="syringe" size={16} color={C.primary}/></div>
+                  <div>
+                    <p style={{fontWeight:600,fontSize:14}}>{fmtBR(a.date)}</p>
+                    <p style={{fontSize:12,color:C.muted}}>{a.site}</p>
+                  </div>
+                </div>
+                <span style={{fontSize:14,fontWeight:700,color:C.muted}}>{a.dose||"—"}</span>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ── Diário ── */
+function Diario({data,persist,today}){
+  const[w,setW]=useState("");
+  const lastW=data.weights.length?[...data.weights].sort((a,b)=>a.date<b.date?1:-1)[0]:null;
+  const canLog=!lastW||daysBetween(lastW.date,today)>=7;
+  const addW=()=>{
+    const val=parseFloat(String(w).replace(",","."));
+    if(!val||val<=0)return;
+    persist({...data,weights:[...data.weights,{date:today,value:val}]});
+    setW("");
+  };
+  const notes=Object.entries(data.days).filter(([,v])=>v.note&&v.note.trim()).sort((a,b)=>a[0]<b[0]?1:-1).slice(0,14);
+  return(
+    <>
+      <Card style={{padding:20}}>
+        <span style={{fontWeight:600}}>Peso (opcional)</span>
+        <p style={{fontSize:12,color:C.muted,margin:"4px 0 12px",lineHeight:1.6}}>Registre só se isso te fizer bem — no máximo uma vez por semana. A balança não precisa mandar na sua rotina.</p>
+        {canLog?(
+          <div style={{display:"flex",gap:8}}>
+            <input value={w} onChange={e=>setW(e.target.value)} inputMode="decimal" placeholder="ex: 78,5 kg" style={{...inp,flex:1}}/>
+            <button onClick={addW} style={{...btnP,padding:"0 16px"}}><Icon name="plus" size={18} color="#fff"/></button>
+          </div>
+        ):(
+          <p style={{fontSize:14,color:C.muted,background:C.bg,borderRadius:16,padding:"12px 16px",border:`1px solid ${C.line}`}}>Você já registrou esta semana 🌿 Próximo em {fmtBR(addDays(lastW.date,7))}.</p>
+        )}
+        {data.weights.length>0&&(
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:16}}>
+            {[...data.weights].sort((a,b)=>a.date<b.date?1:-1).slice(0,6).map((x,i)=>(
+              <span key={i} style={{fontSize:12,padding:"6px 12px",borderRadius:999,background:C.bg,border:`1px solid ${C.line}`,color:C.muted}}>
+                {fmtBR(x.date)} · <strong style={{color:C.ink}}>{x.value}</strong>
+              </span>
+            ))}
+          </div>
+        )}
+      </Card>
+      <div>
+        <p style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".05em",padding:"0 4px",marginBottom:8}}>Como me senti</p>
+        {notes.length===0?<Card style={{padding:20,fontSize:14,color:C.muted,textAlign:"center"}}>Suas anotações de "como me senti" aparecem aqui. Comece pela aba <strong>Hoje</strong>.</Card>:(
+          <div className="space-y-2">
+            {notes.map(([iso,v])=>(
+              <Card key={iso} style={{padding:16}}>
+                <p style={{fontSize:12,fontWeight:700,color:C.primary,marginBottom:4}}>{fmtBR(iso)}</p>
+                <p style={{fontSize:14,lineHeight:1.6}}>{v.note}</p>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ── Consulta ── */
+function Consulta({data,today}){
+  const[copied,setCopied]=useState(false);
+  const from=addDays(today,-30);
+  const apps=data.applications.filter(a=>a.date>=from).sort((a,b)=>a.date<b.date?1:-1);
+  const dRange=Object.entries(data.days).filter(([iso])=>iso>=from);
+  const moved=dRange.filter(([,v])=>v.moved).length;
+  const wDays=dRange.filter(([,v])=>v.water>0);
+  const avgW=wDays.length?Math.round(wDays.reduce((s,[,v])=>s+v.water,0)/wDays.length):0;
+  const weights=data.weights.filter(x=>x.date>=from).sort((a,b)=>a.date<b.date?1:-1);
+  const notes=dRange.filter(([,v])=>v.note&&v.note.trim()).sort((a,b)=>a[0]<b[0]?1:-1);
+  const txt=useMemo(()=>{
+    let t=`RESUMO DA ROTINA - ${fmtBR(from)} a ${fmtBR(today)}\n\nAplicacoes: ${apps.length}\n`;
+    apps.forEach(a=>{t+=`  - ${fmtBR(a.date)} - ${a.dose||"?"} (${a.site})\n`});
+    t+=`\nDias com movimento: ${moved}\nMedia hidratacao: ${avgW} copos/dia\n`;
+    if(weights.length)t+=`\nPeso: `+weights.map(x=>`${fmtBR(x.date)} ${x.value}`).join(" · ")+"\n";
+    if(notes.length){t+=`\nObservacoes:\n`;notes.forEach(([iso,v])=>{t+=`  - ${fmtBR(iso)}: ${v.note}\n`})}
+    return t;
+  },[data,today]);
+  const copy=async()=>{try{await navigator.clipboard.writeText(txt);setCopied(true);setTimeout(()=>setCopied(false),1800)}catch(e){}};
+  const Stat=({icon,label,value,color})=>(
+    <Card style={{padding:16,flex:1}}>
+      <Icon name={icon} size={18} color={color}/>
+      <p style={{fontFamily:DISPLAY,fontSize:24,marginTop:8}}>{value}</p>
+      <p style={{fontSize:12,color:C.muted}}>{label}</p>
+    </Card>
+  );
+  return(
+    <>
+      <p style={{fontSize:14,color:C.muted,padding:"0 4px"}}>Últimos 30 dias — leve isto pro seu médico.</p>
+      <div style={{display:"flex",gap:12}}>
+        <Stat icon="syringe" label="aplicações" value={apps.length} color={C.primary}/>
+        <Stat icon="activity" label="movimento" value={moved} color={C.primary}/>
+        <Stat icon="drops" label="copos/dia" value={avgW} color={C.accent}/>
+      </div>
+      <Card style={{padding:20}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <span style={{fontWeight:600,display:"flex",alignItems:"center",gap:8}}><Icon name="clipboard" size={17} color={C.primary}/> Resumo</span>
+          <button onClick={copy} style={btnS}>{copied?<><Icon name="check" size={15} color={C.primary}/> Copiado</>:<><Icon name="copy" size={15} color={C.primary}/> Copiar</>}</button>
+        </div>
+        <pre style={{whiteSpace:"pre-wrap",fontSize:12.5,lineHeight:1.6,color:C.ink,background:C.bg,borderRadius:16,padding:16,border:`1px solid ${C.line}`,maxHeight:320,overflow:"auto",fontFamily:BODY,margin:0}}>
+{txt}
+        </pre>
+      </Card>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
